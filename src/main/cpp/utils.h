@@ -8,10 +8,13 @@
 
 #include <aifffile.h>
 #include <apefile.h>
+#include <apetag.h>
 #include <asffile.h>
 #include <dsdifffile.h>
 #include <dsffile.h>
 #include <flacfile.h>
+#include <id3v1tag.h>
+#include <id3v2tag.h>
 #include <mp4file.h>
 #include <mpcfile.h>
 #include <mpegfile.h>
@@ -444,6 +447,156 @@ char *getRealPathFromFd(const int fd) {
     link[bytesRead] = '\0';
 
     return link;
+}
+
+enum class TagSaveMode : jint {
+    AllTags = 0,
+    Id3v2Only = 1,
+    Id3v1Only = 2,
+    Id3v2OnlyStripOthers = 3,
+    Id3v1OnlyStripOthers = 4,
+};
+
+bool parseSaveOptions(
+        const jint save_mode,
+        const jint id3v2_version,
+        TagSaveMode &outMode,
+        TagLib::ID3v2::Version &outVersion
+) {
+    switch (save_mode) {
+        case static_cast<jint>(TagSaveMode::AllTags):
+            outMode = TagSaveMode::AllTags;
+            break;
+        case static_cast<jint>(TagSaveMode::Id3v2Only):
+            outMode = TagSaveMode::Id3v2Only;
+            break;
+        case static_cast<jint>(TagSaveMode::Id3v1Only):
+            outMode = TagSaveMode::Id3v1Only;
+            break;
+        case static_cast<jint>(TagSaveMode::Id3v2OnlyStripOthers):
+            outMode = TagSaveMode::Id3v2OnlyStripOthers;
+            break;
+        case static_cast<jint>(TagSaveMode::Id3v1OnlyStripOthers):
+            outMode = TagSaveMode::Id3v1OnlyStripOthers;
+            break;
+        default:
+            return false;
+    }
+
+    switch (id3v2_version) {
+        case static_cast<jint>(TagLib::ID3v2::v3):
+            outVersion = TagLib::ID3v2::v3;
+            break;
+        case static_cast<jint>(TagLib::ID3v2::v4):
+            outVersion = TagLib::ID3v2::v4;
+            break;
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+bool canApplySaveOptions(
+        const TagLibExt::FileRef &f,
+        const TagSaveMode mode,
+        const bool isPictureUpdate
+) {
+    if (f.isNull()) {
+        return false;
+    }
+
+    if (dynamic_cast<const TagLib::MPEG::File *>(f.file()) != nullptr) {
+        if (isPictureUpdate &&
+            (mode == TagSaveMode::Id3v1Only || mode == TagSaveMode::Id3v1OnlyStripOthers)) {
+            return false;
+        }
+        return true;
+    }
+
+    return mode == TagSaveMode::AllTags;
+}
+
+bool saveFileWithOptions(
+        TagLibExt::FileRef &f,
+        const TagSaveMode mode,
+        const TagLib::ID3v2::Version id3v2Version,
+        const bool hadMpegId3v2BeforeEdit,
+        const bool isPictureUpdate
+) {
+    if (auto *mpegFile = dynamic_cast<TagLib::MPEG::File *>(f.file())) {
+        switch (mode) {
+            case TagSaveMode::AllTags:
+                return mpegFile->save(
+                        TagLib::MPEG::File::AllTags,
+                        TagLib::File::StripOthers,
+                        id3v2Version,
+                        TagLib::File::Duplicate
+                );
+            case TagSaveMode::Id3v2Only: {
+                const auto duplicate = (isPictureUpdate && !hadMpegId3v2BeforeEdit)
+                        ? TagLib::File::Duplicate
+                        : TagLib::File::DoNotDuplicate;
+                return mpegFile->save(
+                        TagLib::MPEG::File::ID3v2,
+                        TagLib::File::StripNone,
+                        id3v2Version,
+                        duplicate
+                );
+            }
+            case TagSaveMode::Id3v1Only:
+                return mpegFile->save(
+                        TagLib::MPEG::File::ID3v1,
+                        TagLib::File::StripNone,
+                        id3v2Version,
+                        TagLib::File::DoNotDuplicate
+                );
+            case TagSaveMode::Id3v2OnlyStripOthers:
+                return mpegFile->save(
+                        TagLib::MPEG::File::ID3v2,
+                        TagLib::File::StripOthers,
+                        id3v2Version,
+                        TagLib::File::DoNotDuplicate
+                );
+            case TagSaveMode::Id3v1OnlyStripOthers:
+                return mpegFile->save(
+                        TagLib::MPEG::File::ID3v1,
+                        TagLib::File::StripOthers,
+                        id3v2Version,
+                        TagLib::File::DoNotDuplicate
+                );
+        }
+        return false;
+    }
+
+    if (mode != TagSaveMode::AllTags) {
+        return false;
+    }
+
+    if (id3v2Version == TagLib::ID3v2::v3) {
+        if (auto *wavFile = dynamic_cast<TagLib::RIFF::WAV::File *>(f.file())) {
+            return wavFile->save(
+                    TagLib::RIFF::WAV::File::AllTags,
+                    TagLib::File::StripOthers,
+                    id3v2Version
+            );
+        }
+        if (auto *aiffFile = dynamic_cast<TagLib::RIFF::AIFF::File *>(f.file())) {
+            return aiffFile->save(id3v2Version);
+        }
+        if (auto *dsfFile = dynamic_cast<TagLib::DSF::File *>(f.file())) {
+            return dsfFile->save(id3v2Version);
+        }
+        if (auto *dsdiffFile = dynamic_cast<TagLib::DSDIFF::File *>(f.file())) {
+            return dsdiffFile->save(
+                    TagLib::DSDIFF::File::AllTags,
+                    TagLib::File::StripOthers,
+                    id3v2Version
+            );
+        }
+    }
+
+    return f.save();
 }
 
 #endif //TAGLIB_UTILS_H

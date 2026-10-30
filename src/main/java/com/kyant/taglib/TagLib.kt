@@ -62,18 +62,42 @@ public object TagLib {
             ?: pictures.firstOrNull()
     }
 
+    @JvmStatic
+    private external fun savePropertyMap(
+        fd: Int,
+        propertyMap: PropertyMap,
+        saveMode: Int,
+        id3v2Version: Int,
+    ): Boolean
+
     /**
      * Save metadata by file descriptor.
      *
      * @param fd File descriptor
      * @param propertyMap Property map to save
+     * @param saveOptions Options controlling which tag formats and ID3v2 version are written
      *
      * @return Whether the operation was successful
      */
     @JvmStatic
-    public external fun savePropertyMap(
+    @JvmOverloads
+    public fun savePropertyMap(
         fd: Int,
         propertyMap: PropertyMap,
+        saveOptions: SaveOptions = SaveOptions.Default,
+    ): Boolean = savePropertyMap(
+        fd = fd,
+        propertyMap = propertyMap,
+        saveMode = saveOptions.mode.nativeValue,
+        id3v2Version = saveOptions.id3v2Version.nativeValue,
+    )
+
+    @JvmStatic
+    private external fun savePictures(
+        fd: Int,
+        pictures: Array<Picture>,
+        saveMode: Int,
+        id3v2Version: Int,
     ): Boolean
 
     /**
@@ -81,14 +105,38 @@ public object TagLib {
      *
      * @param fd File descriptor
      * @param pictures Pictures to save
+     * @param saveOptions Options controlling which tag formats and ID3v2 version are written
      *
      * @return Whether the operation was successful
      */
     @JvmStatic
-    public external fun savePictures(
+    @JvmOverloads
+    public fun savePictures(
         fd: Int,
         pictures: Array<Picture>,
+        saveOptions: SaveOptions = SaveOptions.Default,
+    ): Boolean = savePictures(
+        fd = fd,
+        pictures = pictures,
+        saveMode = saveOptions.mode.nativeValue,
+        id3v2Version = saveOptions.id3v2Version.nativeValue,
+    )
+
+    @JvmStatic
+    private external fun nativeGetMpegTagInfo(fd: Int): MpegTagInfo?
+
+    internal fun getMpegTagInfo(fd: Int): MpegTagInfo? = nativeGetMpegTagInfo(fd)
+
+    @JvmStatic
+    private external fun nativeSetMpegApeTitle(
+        fd: Int,
+        title: String,
     ): Boolean
+
+    internal fun setMpegApeTitle(
+        fd: Int,
+        title: String,
+    ): Boolean = nativeSetMpegApeTitle(fd, title)
 
     init {
         System.loadLibrary("taglib")
