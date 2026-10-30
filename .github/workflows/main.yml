@@ -1,4 +1,4 @@
-name: Build and publish release
+name: CI
 
 on:
   push:
@@ -28,9 +28,9 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '25.0.5+8.0.LTS'
+          java-version: '21'
 
-      - name: Set Up Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-cleanup: on-success
@@ -41,15 +41,15 @@ jobs:
       - name: Android accept licenses
         uses: SimonMarquis/android-accept-licenses@v1
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Build Android library AAR
+        run: ./gradlew clean bundleReleaseAar
 
-      - name: Create GitHub Release
+      - name: Create GitHub release on main push
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'dependabot[bot]' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-          tag_name: v${{ github.run_number }}
-          name: Release ${{ github.run_number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ github.run_number }}" \
+            --generate-notes \
+            --title "Release ${{ github.run_number }}" \
+            ./build/outputs/aar/taglib-release.aar
